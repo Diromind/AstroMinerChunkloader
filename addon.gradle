@@ -1,0 +1,16 @@
+sourceSets {
+    integrationTest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath + sourceSets.main.runtimeClasspath
+    }
+}
+
+// The probe is only on the disposable development server's classpath, never in the published mod.
+if (project.hasProperty("integrationPhase")) {
+    tasks.named("runServer") {
+        dependsOn(tasks.named("integrationTestClasses"))
+        classpath(sourceSets.integrationTest.output)
+        workingDir = file("run/integration")
+        systemProperty("amcl.integration.phase", project.property("integrationPhase"))
+    }
+}

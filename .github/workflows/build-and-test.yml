@@ -2,12 +2,64 @@
 name: Build and test
 
 on:
-  pull_request:
-    branches: [ master, main ]
   push:
-    branches: [ master, main ]
+    branches: [main]
+    tags: ['*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
-    uses: GTNewHorizons/GTNH-Actions-Workflows/.github/workflows/build-and-test.yml@master
-    secrets: inherit
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew --no-daemon build
+      - name: Verify chunkloading across a real Forge server restart
+        run: python3 scripts/integration_test.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mod-jars
+          path: build/libs/*.jar
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports
+          path: build/reports/
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: integration-logs
+          path: run/integration/*.log
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mod-jars
+          path: jars
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" jars/*.jar --verify-tag \
+            --title "Astro Miner Chunkloader $RELEASE_TAG" --generate-notes "${flags[@]}"

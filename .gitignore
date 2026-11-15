@@ -52,7 +52,6 @@ tags
 *.env*
 
 ## JEnv ##
-.java-version
 
 ## Gradle ##
 user.properties
@@ -74,7 +73,6 @@ out/
 *.DS_Store
 
 ## Linux ##
-*.sh
 *.zsh
 *.fish
 *.ksh
@@ -82,7 +80,6 @@ out/
 ## Windows ##
 *.bat
 *.cmd
-*.ps1
 *.psm1
 *.psd1
 
@@ -102,3 +99,7 @@ addon.late.local.gradle.kts
 *.ipr
 *.iws
 layout.json
+
+# Python test runner
+__pycache__/
+*.pyc
