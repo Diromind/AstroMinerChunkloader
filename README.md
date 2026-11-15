@@ -4,48 +4,39 @@
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.7.10-5C913B)](https://www.minecraft.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A small server-side Forge addon that keeps Galacticraft Astro Miners loaded while they travel away from players. Intended for the GT New Horizons version of Galacticraft.
+Keeps Galacticraft Astro Miners running beyond the player's loaded chunks. Each miner gets a moving 3x3 chunk window, plus the chunks occupied by its dock. The owner can be anywhere on the server, including another dimension.
 
-## Features
+When the owner logs out, the addon releases all its tickets. A saved index records where the miners stopped, so they can be loaded again when the owner returns, even after a server restart.
 
-- A moving **3×3 chunk window** around each Astro Miner.
-- Keeps every chunk occupied by the **2×2×2 dock** loaded, including docks placed across chunk boundaries.
-- Retains at most **13 chunks per miner**, rather than loading its entire flight path.
-- Restores entity-bound Forge tickets after a normal server restart.
-- Releases tickets when a miner dies or is removed from the world.
-- Uses Forge events and public APIs: **no ASM, Mixins, access transformers, or reflection**.
+## Install
 
-## Installation
+Download the regular JAR from [Releases](https://github.com/Diromind/AstroMinerChunkloader/releases), put it in the server's `mods/` directory and restart. Clients do not need the addon. For single player, put the JAR in the client's `mods/` directory.
 
-1. Download the regular JAR from [Releases](https://github.com/Diromind/AstroMinerChunkloader/releases). Do not install the `-dev` or `-sources` JAR.
-2. Stop the server and put the JAR in its `mods/` directory.
-3. Start the server. Clients do not need the addon.
+Use the regular JAR for installation. The `-dev` and `-sources` files are for development.
 
-For single player, install it in the client's `mods/` directory; it acts on the integrated server.
-
-### Requirements
-
-| Component | Target |
+| Dependency | Version |
 | --- | --- |
 | Minecraft | 1.7.10 |
 | Forge | 10.13.4.1614 |
-| Galacticraft | GTNH fork, compiled against **3.4.34-GTNH** |
+| Galacticraft | GTNH fork; compiled against 3.4.34-GTNH |
 
-Other Galacticraft builds have not been validated. This is an independent addon, not an official GTNH or Galacticraft release.
+This is an independent addon. Other Galacticraft builds have not been validated. Releases are currently alpha builds; the full mining, return and recharge cycle still needs testing in a complete GTNH pack.
 
-## Behavior and limits
+## Chunkloading
 
-**The owner must still be online.** Galacticraft pauses the miner when its owner logs out; this addon preserves that behavior. The owner may be in another dimension. Tickets remain allocated while the owner is offline so the miner can resume and survive a server restart.
+A miner holds at most 13 chunks. The window moves with it and covers the entire 2x2x2 dock, including docks that cross chunk boundaries. Power cables, generators and storage outside those chunks need their own chunkloading.
 
-The addon does not change mining speed, energy use, target selection, inventory handling, or block-breaking permission checks. Power generation, cables and output storage outside the dock's chunks need their own chunkloading.
+Logout releases the addon's tickets immediately. Players or other chunkloaders may still keep the same chunks loaded. Galacticraft controls mining speed, energy use, inventory transfers and block-breaking permissions.
 
-Forge limits tickets in `config/forgeChunkLoading.cfg`. The per-mod settings for `astrominerchunkloader` must allow enough tickets for your miners and at least **13 chunks per ticket**. Standard Forge defaults allow 25 chunks per ticket. If allocation is denied, the addon logs a warning and retries every 100 server ticks; it does not disable Forge limits.
+The index lives in `<save>/data/astrominerchunkloader_miners.dat`. Keep it with the rest of the world backup. Existing miners are indexed when they load. Miners with saved tickets from alpha.1 are indexed when Forge restores those tickets.
 
-Loading previously unexplored terrain can still cause chunk generation work on the server thread.
+Forge sets the limits in `config/forgeChunkLoading.cfg`. Set `maximumChunksPerTicket` for `astrominerchunkloader` to at least 13. A lower limit disables this addon's chunkloading and logs one error until the server restarts. Forge's standard default is 25.
 
-## Building
+`maximumTicketCount` must also cover the number of online owners' miners. When no ticket is available, the addon retries every 100 ticks while the miner remains loaded.
 
-Uses the [GTNH mod template](https://github.com/GTNewHorizons/ExampleMod1.7.10) and RetroFuturaGradle.
+## Build and test
+
+Run Gradle with JDK 25. The build provisions its other Java toolchains and produces Java 8 bytecode.
 
 ```sh
 git clone https://github.com/Diromind/AstroMinerChunkloader.git
@@ -53,28 +44,22 @@ cd AstroMinerChunkloader
 ./gradlew build
 ```
 
-Run Gradle with **JDK 25**. Additional Java toolchains are provisioned by the build. The distributed addon targets Java 8 bytecode; the build JDK is not the game's Java requirement. Output is under `build/libs/`.
+JARs are written to `build/libs/`.
 
 ```sh
-./gradlew test           # Geometry, restoration, deduplication and lifecycle tests
-./gradlew spotlessApply  # Apply GTNH formatting
-python3 scripts/integration_test.py  # Disposable server: create, move, save, restart, remove
+./gradlew test
+./gradlew spotlessApply
+python3 scripts/integration_test.py
 ```
 
-The integration test uses a disposable save under `run/integration/`, binds only to `127.0.0.1:25599`, and refuses to overwrite an existing test world. In Galacticraft's actual **Asteroids dimension**, it verifies a dock at a four-chunk intersection, a miner moved beyond its original window, ticket restoration after restart, cleanup after deletion, and preservation of the offline-owner pause. It does not simulate a complete mining trip or replace testing in your modpack.
+The integration test starts a local Forge server on `127.0.0.1:25599` and uses a disposable save in `run/integration/`. It refuses to overwrite an existing test world. In the Asteroids dimension, it checks movement across chunks, a dock at a four-chunk intersection, offline restarts, login and logout, ticket cleanup, and a limit below 13 chunks. The simulated owner stays in the Overworld.
 
-## How it works
+## Development
 
-`EntityJoinWorldEvent` queues miners without recursively loading chunks. At `WorldTickEvent.START`, the addon obtains an entity-bound ticket and updates its window before the world updates entities. Dock coordinates are read once through the miner's public NBT serialization API.
+The addon uses Forge events and public APIs. It has no ASM transformers, Mixins, access transformers or reflection. Its build comes from the [GTNH mod template](https://github.com/GTNewHorizons/ExampleMod1.7.10).
 
-New chunks are loaded before old chunks are released. Departed chunks are then unregistered before registering replacements, so a ticket near its configured capacity does not evict retained chunks via Forge's FIFO limit. All operations happen on the server thread.
-
-During restoration, Forge loads the bound entity before invoking the ticket callback. The callback takes precedence over the queued join event, preventing a duplicate ticket. World unload discards Java references without releasing persisted tickets.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build and runtime checks. Report bugs through [GitHub Issues](https://github.com/Diromind/AstroMinerChunkloader/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the lifecycle and checks. Report problems in [Issues](https://github.com/Diromind/AstroMinerChunkloader/issues), with the Forge and Galacticraft versions and relevant logs.
 
 ## License
 
-[MIT](LICENSE). Built using the GTNH mod template. Galacticraft and Minecraft are separate dependencies and are not bundled.
+[MIT](LICENSE). Minecraft and Galacticraft are separate dependencies and are not bundled.

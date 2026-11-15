@@ -18,7 +18,12 @@ if (run / "world").exists():
     "generate-structures=false\nmax-tick-time=-1\n"
 )
 
-for phase in ("seed", "restore"):
+for phase in ("seed", "offline", "login", "limit"):
+    if phase == "limit":
+        (run / "config" / "forgeChunkLoading.cfg").write_text(
+            "defaults {\n B:enabled=true\n}\nastrominerchunkloader {\n"
+            " I:maximumTicketCount=200\n I:maximumChunksPerTicket=12\n}\n"
+        )
     log = run / (phase + ".log")
     with log.open("w") as output:
         process = subprocess.Popen(
@@ -43,4 +48,6 @@ for phase in ("seed", "restore"):
     if code or "AMCL_INTEGRATION_PASS " + phase not in text or "AMCL_INTEGRATION_FAIL" in text:
         print(text[-16000:])
         sys.exit("Integration phase failed: " + phase)
+    if phase == "limit" and text.count("Chunkloading is disabled:") != 1:
+        sys.exit("Expected exactly one configuration error for the undersized limit")
     print("PASS: " + phase, flush=True)

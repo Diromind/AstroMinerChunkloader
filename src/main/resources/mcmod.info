@@ -2,7 +2,7 @@
   {
     "modid": "${modId}",
     "name": "${modName}",
-    "description": "Keeps Galacticraft Astro Miners and their docks chunkloaded using standard Forge events and entity tickets.",
+    "description": "Keeps Galacticraft Astro Miners chunkloaded while their owners are online.",
     "version": "${modVersion}",
     "mcversion": "${minecraftVersion}",
     "url": "https://github.com/Diromind/AstroMinerChunkloader",

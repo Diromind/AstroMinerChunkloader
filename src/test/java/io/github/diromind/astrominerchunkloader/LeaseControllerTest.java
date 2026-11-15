@@ -110,10 +110,75 @@ public class LeaseControllerTest {
         assertEquals(2, backend.updates.size());
     }
 
+    @Test
+    public void offlineOwnerNeverReceivesTicket() {
+        Miner miner = new Miner();
+        miner.canRun = false;
+        controller.enqueue(miner);
+        controller.tick();
+        controller.tick();
+        assertEquals(0, backend.requests);
+        assertTrue(backend.updates.isEmpty());
+    }
+
+    @Test
+    public void logoutReleasesImmediatelyAndPendingJoinCannotReallocate() {
+        Miner miner = new Miner();
+        Object ticket = new Object();
+        controller.restore(miner, ticket);
+        controller.enqueue(miner);
+        miner.canRun = false;
+        controller.releaseMatching(candidate -> candidate == miner);
+        assertEquals(1, backend.released.size());
+        controller.tick();
+        assertEquals(0, backend.requests);
+        assertEquals(1, backend.released.size());
+    }
+
+    @Test
+    public void offlineRestoredTicketIsReleasedWithoutUpdatingChunks() {
+        Miner miner = new Miner();
+        miner.canRun = false;
+        controller.restore(miner, new Object());
+        controller.tick();
+        assertEquals(1, backend.released.size());
+        assertTrue(backend.updates.isEmpty());
+    }
+
+    @Test
+    public void loginCanAcquireANewTicketAfterLogout() {
+        Miner miner = new Miner();
+        controller.enqueue(miner);
+        controller.tick();
+        miner.canRun = false;
+        controller.releaseMatching(candidate -> true);
+        miner.canRun = true;
+        controller.enqueue(miner);
+        controller.tick();
+        assertEquals(2, backend.requests);
+        assertEquals(1, backend.released.size());
+    }
+
+    @Test
+    public void logoutOnlyReleasesMatchingMiners() {
+        Miner first = new Miner();
+        Miner second = new Miner();
+        Object firstTicket = new Object();
+        Object secondTicket = new Object();
+        controller.restore(first, firstTicket);
+        controller.restore(second, secondTicket);
+        controller.releaseMatching(candidate -> candidate == first);
+        controller.tick();
+        assertEquals(1, backend.released.size());
+        assertEquals(firstTicket, backend.released.get(0));
+        assertEquals(secondTicket, backend.updates.get(0));
+    }
+
     private static final class Miner {
 
         final UUID id = UUID.randomUUID();
         boolean loaded = true;
+        boolean canRun = true;
     }
 
     private static final class FakeBackend implements LeaseController.Backend<Miner, Object> {
@@ -133,6 +198,11 @@ public class LeaseControllerTest {
         @Override
         public boolean isLoaded(Miner miner) {
             return miner.loaded;
+        }
+
+        @Override
+        public boolean canRun(Miner miner) {
+            return miner.canRun;
         }
 
         @Override

@@ -5,6 +5,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /** Ticket lifecycle, independent of Minecraft so restoration and cleanup can be tested directly. */
 final class LeaseController<M, T> {
@@ -14,6 +15,12 @@ final class LeaseController<M, T> {
         UUID id(M miner);
 
         boolean isLoaded(M miner);
+
+        default boolean canRun(M miner) {
+            return true;
+        }
+
+        default void beforeRelease(M miner) {}
 
         T request(M miner);
 
@@ -59,17 +66,26 @@ final class LeaseController<M, T> {
             .iterator();
         while (iterator.hasNext()) {
             Lease<M, T> lease = iterator.next();
-            if (!backend.isLoaded(lease.miner)) {
+            if (!backend.isLoaded(lease.miner) || !backend.canRun(lease.miner)) {
+                backend.beforeRelease(lease.miner);
                 backend.release(lease.ticket);
                 iterator.remove();
             } else {
                 backend.update(lease.miner, lease.ticket);
             }
         }
+        if (pending.isEmpty()) {
+            return;
+        }
         // Loading chunks can emit EntityJoinWorldEvent, adding more pending miners.
         for (Map.Entry<UUID, Pending<M>> entry : new ArrayList<>(pending.entrySet())) {
             Pending<M> candidate = entry.getValue();
-            if (!backend.isLoaded(candidate.miner) || active.containsKey(entry.getKey())) {
+            if (!backend.isLoaded(candidate.miner) || !backend.canRun(candidate.miner)) {
+                backend.beforeRelease(candidate.miner);
+                pending.remove(entry.getKey());
+                continue;
+            }
+            if (active.containsKey(entry.getKey())) {
                 pending.remove(entry.getKey());
                 continue;
             }
@@ -87,6 +103,28 @@ final class LeaseController<M, T> {
             active.put(entry.getKey(), new Lease<>(candidate.miner, ticket));
             pending.remove(entry.getKey());
             backend.update(candidate.miner, ticket);
+        }
+    }
+
+    void releaseMatching(Predicate<M> predicate) {
+        Iterator<Lease<M, T>> leases = active.values()
+            .iterator();
+        while (leases.hasNext()) {
+            Lease<M, T> lease = leases.next();
+            if (predicate.test(lease.miner)) {
+                backend.beforeRelease(lease.miner);
+                backend.release(lease.ticket);
+                leases.remove();
+            }
+        }
+        Iterator<Pending<M>> waiting = pending.values()
+            .iterator();
+        while (waiting.hasNext()) {
+            Pending<M> candidate = waiting.next();
+            if (predicate.test(candidate.miner)) {
+                backend.beforeRelease(candidate.miner);
+                waiting.remove();
+            }
         }
     }
 
