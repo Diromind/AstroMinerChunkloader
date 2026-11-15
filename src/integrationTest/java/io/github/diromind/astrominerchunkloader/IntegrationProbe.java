@@ -23,7 +23,9 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import micdoodle8.mods.galacticraft.api.vector.BlockVec3;
+import micdoodle8.mods.galacticraft.planets.asteroids.ConfigManagerAsteroids;
 import micdoodle8.mods.galacticraft.planets.asteroids.blocks.AsteroidBlocks;
+import micdoodle8.mods.galacticraft.planets.asteroids.dimension.WorldProviderAsteroids;
 import micdoodle8.mods.galacticraft.planets.asteroids.entities.EntityAstroMiner;
 
 /** Executed only in a fresh, disposable development world by scripts/integration_test.py. */
@@ -33,10 +35,16 @@ public class IntegrationProbe {
     private static final int BASE = 8191;
     private int ticks;
     private EntityAstroMiner miner;
+    private Ticket placementTicket;
     private boolean finished;
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
+        ForgeChunkManager.setForcedChunkLoadingCallback(this, (tickets, world) -> {
+            for (Ticket ticket : tickets) {
+                ForgeChunkManager.releaseTicket(ticket);
+            }
+        });
         FMLCommonHandler.instance()
             .bus()
             .register(this);
@@ -51,7 +59,8 @@ public class IntegrationProbe {
         String phase = System.getProperty("amcl.integration.phase");
         try {
             WorldServer world = MinecraftServer.getServer()
-                .worldServerForDimension(0);
+                .worldServerForDimension(ConfigManagerAsteroids.dimensionIDAsteroids);
+            require(world.provider instanceof WorldProviderAsteroids, "Expected the real Asteroids dimension");
             if ("seed".equals(phase)) {
                 seed(world);
             } else if ("restore".equals(phase)) {
@@ -70,6 +79,15 @@ public class IntegrationProbe {
 
     private void seed(WorldServer world) throws Exception {
         if (ticks == 5) {
+            // Simulate the player keeping the dock loaded while placing it, before a miner exists.
+            placementTicket = ForgeChunkManager.requestTicket(this, world, ForgeChunkManager.Type.NORMAL);
+            require(placementTicket != null, "No placement ticket for the fixture");
+            for (int cx = BASE >> 4; cx <= (BASE + 1) >> 4; cx++) {
+                for (int cz = BASE >> 4; cz <= (BASE + 1) >> 4; cz++) {
+                    world.getChunkFromChunkCoords(cx, cz);
+                    ForgeChunkManager.forceChunk(placementTicket, new ChunkCoordIntPair(cx, cz));
+                }
+            }
             for (int x = BASE; x <= BASE + 1; x++) {
                 for (int z = BASE; z <= BASE + 1; z++) {
                     for (int y = 200; y <= 201; y++) {
@@ -96,6 +114,7 @@ public class IntegrationProbe {
         }
         if (ticks == 15) {
             verifyWindow(world, miner);
+            ForgeChunkManager.releaseTicket(placementTicket);
             require(miner.playerMP == null, "Offline-owner behavior changed");
             // Exercise a jump beyond the old window; the pre-world hook must load the new window.
             miner.setPosition(BASE + 161, 200, BASE + 1);

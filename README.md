@@ -61,7 +61,7 @@ Run Gradle with **JDK 25**. Additional Java toolchains are provisioned by the bu
 python3 scripts/integration_test.py  # Disposable server: create, move, save, restart, remove
 ```
 
-The integration test uses its own flat world under `run/integration/`, binds only to `127.0.0.1:25599`, and refuses to overwrite an existing test world. It verifies a dock at a four-chunk intersection, a miner moved beyond its original window, ticket restoration after restart, cleanup after deletion, and preservation of the offline-owner pause. It does not simulate a complete mining trip or replace testing in your modpack.
+The integration test uses a disposable save under `run/integration/`, binds only to `127.0.0.1:25599`, and refuses to overwrite an existing test world. In Galacticraft's actual **Asteroids dimension**, it verifies a dock at a four-chunk intersection, a miner moved beyond its original window, ticket restoration after restart, cleanup after deletion, and preservation of the offline-owner pause. It does not simulate a complete mining trip or replace testing in your modpack.
 
 ## How it works
 
